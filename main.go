@@ -70,7 +70,7 @@ func main() {
 		select {
 		case <-responseReceived.Ready():
 			ev, err := responseReceived.Recv()
-			if err != nil { // Handle error...
+			if err != nil {
 				log.Fatal(err)
 			}
 
@@ -81,22 +81,13 @@ func main() {
 
 			go func(srcUrl, tgtPath string) {
 				if err := q.QueueTask(func(ctx context.Context) error {
-					u, err := url.Parse(srcUrl)
-					if err != nil {
-						return err
-					}
-
-					u.Path = ""
-
-					downloadAudio(u.String(), tgtPath)
+					downloadAudio(srcUrl, tgtPath)
 
 					return nil
 				}); err != nil {
 					panic(err)
 				}
 			}(ev.Response.URL, "DL-"+strconv.Itoa(rand.Int()))
-
-			//go downloadAudio(ev.Response.URL, "DL-"+strconv.Itoa(rand.Int()))
 		}
 	}
 }
