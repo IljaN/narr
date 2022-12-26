@@ -33,15 +33,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Enable event stream
+	if err = chrome.Network.Enable(ctx, network.NewEnableArgs()); err != nil {
+		log.Fatal(err)
+	}
+
 	// Go to netflix
 	navArgs := page.NewNavigateArgs("https://www.netflix.com")
 	_, err = chrome.Page.Navigate(ctx, navArgs)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Enable event stream
-	if err = chrome.Network.Enable(ctx, network.NewEnableArgs()); err != nil {
 		log.Fatal(err)
 	}
 
@@ -52,26 +52,38 @@ func main() {
 	defer q.Release()
 
 	// Response stream loop
-	for {
-		select {
-		case <-responseReceived.Ready():
-			ev, err := responseReceived.Recv()
-			if err != nil {
-				log.Fatal(err)
+	for aurl := range FilterAudioUrls(responseReceived) {
+		go func(srcUrl, tgtPath string) {
+			if err := q.QueueTask(newDownloadTask(srcUrl, tgtPath)); err != nil {
+				panic(err)
 			}
-
-			// Ignore non-audio urls
-			if !isAudioURL(ev.Response.URL) {
-				continue
-			}
-
-			go func(srcUrl, tgtPath string) {
-				if err := q.QueueTask(newDownloadTask(srcUrl, tgtPath)); err != nil {
-					panic(err)
-				}
-			}(ev.Response.URL, "DL-"+strconv.Itoa(rand.Int()))
-		}
+		}(aurl, "DL-"+strconv.Itoa(rand.Int()))
 	}
+}
+
+func FilterAudioUrls(responseReceived network.ResponseReceivedClient) chan string {
+	urls := make(chan string)
+	go func() {
+		for {
+			select {
+			case <-responseReceived.Ready():
+				ev, err := responseReceived.Recv()
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				// Ignore non-audio urls
+				if !isAudioURL(ev.Response.URL) {
+					continue
+				}
+
+				urls <- ev.Response.URL
+			}
+
+		}
+	}()
+
+	return urls
 }
 
 // connectToChromeDebugger establishes a debugging session on a remote chrome instance. Chrome must be already started in debug-mode.
