@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/golang-queue/queue"
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/devtool"
@@ -17,12 +18,23 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
 	ctx := context.Background()
+	var chrome *cdp.Client
 
-	chrome, err := connectToChromeDebugger(ctx, "http://127.0.0.1:9222")
+	retryFunc := func() error {
+		var err error
+		chrome, err = connectToChromeDebugger(ctx, "http://127.0.0.1:9222")
+		if err != nil {
+			log.Print(fmt.Errorf("can't connect to http://127.0.0.1:9222. Chrome must be started in debug mode. %w", err))
+		}
+		return err
+	}
+
+	err := backoff.Retry(retryFunc, backoff.NewConstantBackOff(5*time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,7 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Go to netflix
+	// Open netflix tab
 	navArgs := page.NewNavigateArgs("https://www.netflix.com")
 	_, err = chrome.Page.Navigate(ctx, navArgs)
 	if err != nil {
@@ -51,8 +63,10 @@ func main() {
 	q := queue.NewPool(8)
 	defer q.Release()
 
-	// Response stream loop
-	for aurl := range FilterAudioUrls(responseReceived) {
+	urls := receiveAudioURLs(responseReceived)
+	defer close(urls)
+
+	for aurl := range urls {
 		go func(srcUrl, tgtPath string) {
 			if err := q.QueueTask(newDownloadTask(srcUrl, tgtPath)); err != nil {
 				panic(err)
@@ -61,7 +75,7 @@ func main() {
 	}
 }
 
-func FilterAudioUrls(responseReceived network.ResponseReceivedClient) chan string {
+func receiveAudioURLs(responseReceived network.ResponseReceivedClient) chan string {
 	urls := make(chan string)
 	go func() {
 		for {
@@ -79,7 +93,6 @@ func FilterAudioUrls(responseReceived network.ResponseReceivedClient) chan strin
 
 				urls <- ev.Response.URL
 			}
-
 		}
 	}()
 
