@@ -63,19 +63,20 @@ func main() {
 	q := queue.NewPool(8)
 	defer q.Release()
 
-	urls := receiveAudioURLs(responseReceived)
-	defer close(urls)
+	for u := range listen(responseReceived) {
+		if !isAudioURL(u) {
+			continue
+		}
 
-	for aurl := range urls {
-		go func(srcUrl, tgtPath string) {
-			if err := q.QueueTask(newDownloadTask(srcUrl, tgtPath)); err != nil {
-				panic(err)
-			}
-		}(aurl, "DL-"+strconv.Itoa(rand.Int()))
+		err := enqueueDownload(q, toDownloadableURL(u), "DL-"+strconv.Itoa(rand.Int()))
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }
 
-func receiveAudioURLs(responseReceived network.ResponseReceivedClient) chan string {
+// listen to all responses received by the current tab and send us their URLs.
+func listen(responseReceived network.ResponseReceivedClient) chan string {
 	urls := make(chan string)
 	go func() {
 		for {
@@ -84,11 +85,6 @@ func receiveAudioURLs(responseReceived network.ResponseReceivedClient) chan stri
 				ev, err := responseReceived.Recv()
 				if err != nil {
 					log.Fatal(err)
-				}
-
-				// Ignore non-audio urls
-				if !isAudioURL(ev.Response.URL) {
-					continue
 				}
 
 				urls <- ev.Response.URL
@@ -126,42 +122,56 @@ func isAudioURL(u string) bool {
 	return strings.Contains(u, "/range/0-")
 }
 
-func newDownloadTask(srcUrl string, tgtPath string) queue.TaskFunc {
-	return func(ctx context.Context) error {
-		downloadAudio(srcUrl, tgtPath)
-		return nil
-	}
-}
-
-func downloadAudio(fromUrl, toPath string) {
-	fmt.Println("Downloading " + fromUrl)
+// toDownloadableURL removes the path from the url to make the resource downloadable. In our case the path
+// always contains a download-range in bytes which we can discard. See isAudioURL.
+func toDownloadableURL(audioURL string) string {
 	// We need to remove the path from the audio url to get a downloadable url
-	u, err := url.Parse(fromUrl)
+	u, err := url.Parse(audioURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	u.Path = ""
+	return u.String()
 
+}
+
+func enqueueDownload(q *queue.Queue, fromURL, toPath string) error {
+	go func(s, t string) {
+		err := q.QueueTask(func(ctx context.Context) error {
+			return download(fromURL, toPath)
+		})
+		if err != nil {
+			return
+		}
+
+	}(fromURL, toPath)
+
+	return nil
+}
+
+func download(fromUrl, toPath string) error {
+	log.Println("Downloading " + fromUrl)
 	out, err := os.Create(toPath)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	defer out.Close()
 
-	resp, err := http.Get(u.String())
+	resp, err := http.Get(fromUrl)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-
 	defer resp.Body.Close()
 
 	n, err := io.Copy(out, resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Printf("Done, got %d bytes", n)
+
+	return nil
 }
