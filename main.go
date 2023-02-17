@@ -171,7 +171,7 @@ func download(fromUrl, toPath string) error {
 		return err
 	}
 
-	log.Printf("Done, got %d bytes", n)
+	log.Printf("Finished %s as  %s, got %d bytes", fromUrl, toPath, n)
 
 	return nil
 }
