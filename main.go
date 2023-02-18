@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/alfg/mp4"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/golang-queue/queue"
 	"github.com/mafredri/cdp"
@@ -172,7 +173,24 @@ func enqueueDownload(q *queue.Queue, fromURL, toPath string) error {
 }
 
 func download(fromUrl, toPath string) error {
-	log.Println("Downloading " + fromUrl)
+	resp, err := http.Get(fromUrl)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	header := make([]byte, 3000)
+	isAudio, err := probeFileFormat(resp.Body, header)
+	if err != nil {
+		return fmt.Errorf("error probing file format: %w", err)
+	}
+
+	if !isAudio {
+		log.Printf("skipping video file %s", fromUrl)
+		return nil
+	}
+
+	log.Printf("Downloading %s", fromUrl)
 	out, err := os.Create(toPath)
 
 	if err != nil {
@@ -181,11 +199,12 @@ func download(fromUrl, toPath string) error {
 
 	defer out.Close()
 
-	resp, err := http.Get(fromUrl)
+	nHdr, err := out.Write(header)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+
+	log.Printf("Written %d bytes of header data", nHdr)
 
 	n, err := io.Copy(out, resp.Body)
 	if err != nil {
@@ -195,4 +214,19 @@ func download(fromUrl, toPath string) error {
 	log.Printf("Finished %s as  %s, got %d bytes", fromUrl, toPath, n)
 
 	return nil
+}
+
+// probeFileFormat reads the first 30k bytes of the file and checks if it is an audio file.
+func probeFileFormat(body io.Reader, header []byte) (isAudio bool, err error) {
+	_, err = body.Read(header)
+	if err != nil {
+		return false, fmt.Errorf("error reading header: %w", err)
+	}
+
+	rd, err := mp4.OpenFromBytes(header)
+	if err != nil {
+		return false, err
+	}
+
+	return rd.Ftyp.MajorBrand == "mp42", nil
 }
