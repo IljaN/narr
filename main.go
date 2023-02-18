@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"github.com/alfg/mp4"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/golang-queue/queue"
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/devtool"
-	"github.com/mafredri/cdp/protocol/network"
-	"github.com/mafredri/cdp/protocol/page"
 	"github.com/mafredri/cdp/rpcc"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
 	"math/rand"
@@ -36,115 +32,44 @@ func main() {
 	ctx := context.Background()
 	var chrome *cdp.Client
 
-	retryFunc := func() error {
-		var err error
-		chromeURL := args.ChromeURL.String()
-		chrome, err = connectToChromeDebugger(ctx, chromeURL)
+	err := backoff.Retry(func() (err error) {
+		chrome, err = connectToChromeDebugger(ctx, args.ChromeURL.String())
 		if err != nil {
-			log.Print(fmt.Errorf("can't connect to %s. Chrome must be started in debug mode. %w", chromeURL, err))
+			log.Print(fmt.Errorf("can't connect to %s. Chrome must be started in debug mode. %w", args.ChromeURL.String(), err))
 		}
 		return err
-	}
+	}, backoff.NewConstantBackOff(5*time.Second))
 
-	err := backoff.Retry(retryFunc, backoff.NewConstantBackOff(5*time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Listen to response received events
-	responseReceived, err := chrome.Network.ResponseReceived(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	navigated, err := chrome.Page.NavigatedWithinDocument(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err = runBatch(
-		// Enable all the domain events that we're interested in.
-		func() error { return chrome.Network.Enable(ctx, network.NewEnableArgs()) },
-		func() error { return chrome.Page.Enable(ctx) },
-	); err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	defer navigated.Close()
-
-	// Open netflix tab
-	navArgs := page.NewNavigateArgs(args.VideoURL.String())
-	_, err = chrome.Page.Navigate(ctx, navArgs)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer responseReceived.Close()
-
-	// Initial queue pool for download jobs
-	q := queue.NewPool(8)
+	q := NewDownloadQueue()
 	defer q.Release()
+	nflx := NewNFLX(chrome)
 
-	var videoURL = args.VideoURL.String()
-	for events := range listen(navigated, responseReceived) {
-		if events.evType == "mediaUrlReceived" {
-			err := enqueueDownload(q, toDownloadableURL(string(events.payload)), toDownloadPath(videoURL, args.DownloadDir))
+	err = nflx.NavigateTo(ctx, args.VideoURL.String())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var browserURL = args.VideoURL.String()
+	for events := range nflx.Listen(ctx) {
+		switch events.evType {
+		case "mediaUrlReceived":
+			err := q.QueueDownload(DownloadTask{
+				SrcURL:   toDownloadableURL(string(events.payload)),
+				ToPath:   toDownloadPath(browserURL, args.DownloadDir),
+				VideoUrl: browserURL,
+			})
 			if err != nil {
 				log.Println(err)
 			}
-		}
-
-		if events.evType == "navigated" {
-			log.Printf("Navigate to %s \n", events.payload)
-			videoURL = string(events.payload)
+		case "navigated":
+			log.Printf("🗺Navigate to %s \n", events.payload)
+			browserURL = string(events.payload)
 		}
 	}
-
-}
-
-type event struct {
-	evType  string
-	payload []byte
-}
-
-// listen to all responses received by the current tab and send us their URLs.
-func listen(navigated page.NavigatedWithinDocumentClient, responseReceived network.ResponseReceivedClient) chan event {
-	events := make(chan event)
-
-	go func() {
-		defer navigated.Close()
-		defer responseReceived.Close()
-		for {
-			select {
-			case <-navigated.Ready():
-				ev, err := navigated.Recv()
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				events <- event{
-					evType:  "navigated",
-					payload: []byte(ev.URL),
-				}
-
-			case <-responseReceived.Ready():
-				ev, err := responseReceived.Recv()
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				if isMediaURL(ev.Response.URL) {
-					events <- event{
-						evType:  "mediaUrlReceived",
-						payload: []byte(ev.Response.URL),
-					}
-				}
-			}
-		}
-	}()
-
-	return events
 }
 
 // connectToChromeDebugger establishes a debugging session on a remote chrome instance. Chrome must be already started in debug-mode.
@@ -169,21 +94,7 @@ func connectToChromeDebugger(ctx context.Context, url string) (*cdp.Client, erro
 	return cdp.NewClient(conn), nil
 }
 
-func enqueueDownload(q *queue.Queue, fromURL, toPath string) error {
-	go func(s, t string) {
-		err := q.QueueTask(func(ctx context.Context) error {
-			return download(fromURL, toPath)
-		})
-		if err != nil {
-			return
-		}
-
-	}(fromURL, toPath)
-
-	return nil
-}
-
-func download(fromUrl, toPath string) error {
+func download(fromUrl, toPath, videoUrl string) error {
 	resp, err := http.Get(fromUrl)
 	if err != nil {
 		return err
@@ -197,11 +108,11 @@ func download(fromUrl, toPath string) error {
 	}
 
 	if !isAudio {
-		log.Printf("skipping video file %s", fromUrl)
+		log.Printf("✖ Skipping Video...")
 		return nil
 	}
+	log.Printf("▼ Downloading %s  ⟾  %s", videoUrl, toPath)
 
-	log.Printf("Downloading %s", fromUrl)
 	out, err := os.Create(toPath)
 
 	if err != nil {
@@ -210,19 +121,17 @@ func download(fromUrl, toPath string) error {
 
 	defer out.Close()
 
-	nHdr, err := out.Write(header)
+	_, err = out.Write(header)
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Written %d bytes of header data", nHdr)
 
 	n, err := io.Copy(out, resp.Body)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Finished %s as  %s, got %d bytes", fromUrl, toPath, n)
+	log.Printf("✓ Finished    %s  ⟾  %s, got %d bytes", videoUrl, toPath, n)
 
 	return nil
 }
@@ -269,22 +178,4 @@ func toDownloadPath(videoURL string, downloadDir string) string {
 	}
 
 	return downloadDir + "/" + "DL-" + strconv.Itoa(rand.Int())
-}
-
-// Media resources have the path format /range/0-nnnn...
-func isMediaURL(u string) bool {
-	return strings.Contains(u, "/range/0-")
-}
-
-// runBatchFunc is the function signature for runBatch.
-type runBatchFunc func() error
-
-// runBatch runs all functions simultaneously and waits until
-// execution has completed or an error is encountered.
-func runBatch(fn ...runBatchFunc) error {
-	eg := errgroup.Group{}
-	for _, f := range fn {
-		eg.Go(f)
-	}
-	return eg.Wait()
 }
