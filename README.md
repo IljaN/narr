@@ -49,7 +49,7 @@ and downloads the audio tracks in mp4 format. This is possible because the audio
 Narr is written in Go. You can build it the following commands:
 
 ```bash
-git clone github.com/IljaN/narr
+git clone https://github.com/IljaN/narr.git
 cd narr
 go build
 ```
