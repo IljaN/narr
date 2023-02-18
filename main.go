@@ -4,10 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/alfg/mp4"
-	"github.com/cenkalti/backoff/v4"
-	"github.com/mafredri/cdp"
-	"github.com/mafredri/cdp/devtool"
-	"github.com/mafredri/cdp/rpcc"
 	"io"
 	"log"
 	"math/rand"
@@ -16,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Args struct {
@@ -29,30 +24,25 @@ func main() {
 	args := &Args{}
 	mustParse(args)
 
+	// Connect to Chrome debugger, retry until success
 	ctx := context.Background()
-	var chrome *cdp.Client
+	chromeURL := args.ChromeURL.String()
+	chrome := tryConnectToChromeUntilSuccess(ctx, chromeURL)
 
-	err := backoff.Retry(func() (err error) {
-		chrome, err = connectToChromeDebugger(ctx, args.ChromeURL.String())
-		if err != nil {
-			log.Print(fmt.Errorf("can't connect to %s. Chrome must be started in debug mode. %w", args.ChromeURL.String(), err))
-		}
-		return err
-	}, backoff.NewConstantBackOff(5*time.Second))
+	log.Printf("Ꙫ Sucessfully connected to Chrome at %s", chromeURL)
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	// Create task queue for downloading
 	q := NewDownloadQueue()
 	defer q.Release()
 	nflx := NewNFLX(chrome)
 
-	err = nflx.NavigateTo(ctx, args.VideoURL.String())
+	// Navigate to the initial url
+	err := nflx.NavigateTo(ctx, args.VideoURL.String())
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// Listen for received media urls and queue them for download. Also listen for navigated events to update the current url
 	var browserURL = args.VideoURL.String()
 	for events := range nflx.Listen(ctx) {
 		switch events.evType {
@@ -72,28 +62,9 @@ func main() {
 	}
 }
 
-// connectToChromeDebugger establishes a debugging session on a remote chrome instance. Chrome must be already started in debug-mode.
-// See https://blog.chromium.org/2011/05/remote-debugging-with-chrome-developer.html for more details
-func connectToChromeDebugger(ctx context.Context, url string) (*cdp.Client, error) {
-	// Use the DevTools HTTP/JSON API to manage targets (e.g. pages, webworkers).
-	devt := devtool.New(url)
-	pt, err := devt.Get(ctx, devtool.Page)
-	if err != nil {
-		pt, err = devt.Create(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Initiate a new RPC connection to the Chrome DevTools Protocol target.
-	conn, err := rpcc.DialContext(ctx, pt.WebSocketDebuggerURL)
-	if err != nil {
-		return nil, err
-	}
-
-	return cdp.NewClient(conn), nil
-}
-
+// download downloads the audio file from the given url and saves it to the given path. As Netflix has no metadata for
+// its media files, we need to probe the file format to determine if it's an audio file or a video file. This is done by
+// reading the first 3000 bytes of the file and checking if it's an audio file. If it's a video file, we skip it.
 func download(fromUrl, toPath, videoUrl string) error {
 	resp, err := http.Get(fromUrl)
 	if err != nil {
@@ -101,6 +72,7 @@ func download(fromUrl, toPath, videoUrl string) error {
 	}
 	defer resp.Body.Close()
 
+	// Probe file format
 	header := make([]byte, 3000)
 	isAudio, err := probeFileFormat(resp.Body, header)
 	if err != nil {
@@ -108,7 +80,6 @@ func download(fromUrl, toPath, videoUrl string) error {
 	}
 
 	if !isAudio {
-		log.Printf("✖ Skipping Video...")
 		return nil
 	}
 	log.Printf("▼ Downloading %s  ⟾  %s", videoUrl, toPath)
