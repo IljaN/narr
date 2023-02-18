@@ -21,15 +21,25 @@ import (
 	"time"
 )
 
+type Args struct {
+	VideoURL    *url.URL `arg:"positional,required" help:"url of the video to download audio from. Must be a netflix url. e.g. https://www.netflix.com/watch/12345678?trackId=12345678"`
+	DownloadDir string   `arg:"positional" default:"." help:"directory where to download the audio files. Defaults to current working directory."`
+	ChromeURL   *url.URL `arg:"-c, --chrome-url" default:"http://127.0.0.1:9222" help:"url of the chrome debugger."`
+}
+
 func main() {
+	args := &Args{}
+	mustParse(args)
+
 	ctx := context.Background()
 	var chrome *cdp.Client
 
 	retryFunc := func() error {
 		var err error
-		chrome, err = connectToChromeDebugger(ctx, "http://127.0.0.1:9222")
+		chromeURL := args.ChromeURL.String()
+		chrome, err = connectToChromeDebugger(ctx, chromeURL)
 		if err != nil {
-			log.Print(fmt.Errorf("can't connect to http://127.0.0.1:9222. Chrome must be started in debug mode. %w", err))
+			log.Print(fmt.Errorf("can't connect to %s. Chrome must be started in debug mode. %w", chromeURL, err))
 		}
 		return err
 	}
@@ -51,7 +61,7 @@ func main() {
 	}
 
 	// Open netflix tab
-	navArgs := page.NewNavigateArgs("https://www.netflix.com")
+	navArgs := page.NewNavigateArgs(args.VideoURL.String())
 	_, err = chrome.Page.Navigate(ctx, navArgs)
 	if err != nil {
 		log.Fatal(err)
@@ -68,7 +78,7 @@ func main() {
 			continue
 		}
 
-		err := enqueueDownload(q, toDownloadableURL(u), "DL-"+strconv.Itoa(rand.Int()))
+		err := enqueueDownload(q, toDownloadableURL(u), toDownloadPath(args.VideoURL, args.DownloadDir))
 		if err != nil {
 			log.Println(err)
 		}
@@ -133,7 +143,18 @@ func toDownloadableURL(audioURL string) string {
 
 	u.Path = ""
 	return u.String()
+}
 
+// toDownloadPath returns the path where to download the audio file. The path is composed of the video id, the track
+// id and a random number.
+func toDownloadPath(videoURL *url.URL, downloadDir string) string {
+	if strings.HasPrefix(videoURL.Path, "/watch") && videoURL.Query().Has("trackId") {
+		videoId := strings.TrimLeft(videoURL.Path, "/watch/")
+		trackId := videoURL.Query().Get("trackId")
+		return downloadDir + "/" + videoId + "-" + trackId + "-" + strconv.Itoa(rand.Int())
+	}
+
+	return downloadDir + "/" + "DL-" + strconv.Itoa(rand.Int())
 }
 
 func enqueueDownload(q *queue.Queue, fromURL, toPath string) error {
