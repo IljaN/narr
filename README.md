@@ -38,13 +38,13 @@ download the audio track of the currently playing episode.
 
 It is also possible to navigate to the netflix home page. Narr will then download audio tracks of trailers or previews.
 
-# How it works
+## How it works
 
 Narr uses the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) to communicate with the
 browser. It intercepts the network requests
 and downloads the audio tracks in mp4 format. This is possible because the audio is not protected by DRM.
 
-# Build from source
+## Build from source
 
 Narr is written in Go. You can build it the following commands:
 
@@ -54,7 +54,7 @@ cd narr
 go build
 ```
 
-# Flags
+## Flags
 
 ```bash
 narr --help
