@@ -1,6 +1,4 @@
 # Narr
-
------
 Netflix Audio Ripper - Download audio tracks from Netflix to sample your favourite shows. :musical_note:
 
 ## Usage
