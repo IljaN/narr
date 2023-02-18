@@ -111,9 +111,10 @@ type event struct {
 // listen to all responses received by the current tab and send us their URLs.
 func listen(navigated page.NavigatedWithinDocumentClient, responseReceived network.ResponseReceivedClient) chan event {
 	events := make(chan event)
-	defer navigated.Close()
-	defer responseReceived.Close()
+
 	go func() {
+		defer navigated.Close()
+		defer responseReceived.Close()
 		for {
 			select {
 			case <-navigated.Ready():
