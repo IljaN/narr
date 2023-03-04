@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+type DownloadQueue struct {
+	statusMsgs chan DownloadStatus
+	*queue.Queue
+}
+
 func NewDownloadQueue() *DownloadQueue {
 	return &DownloadQueue{
 		Queue:      queue.NewPool(8),
@@ -20,15 +25,15 @@ func NewDownloadQueue() *DownloadQueue {
 	}
 }
 
-type DownloadQueue struct {
-	statusMsgs chan DownloadStatus
-	*queue.Queue
-}
-
 type DownloadTask struct {
 	SrcURL   string
 	ToPath   string
 	VideoUrl string
+}
+
+type DownloadStatus interface {
+	TaskId() string
+	Task() DownloadTask
 }
 
 func (q *DownloadQueue) OnStatusReceived(f func(DownloadStatus)) {
@@ -42,12 +47,11 @@ func (q *DownloadQueue) OnStatusReceived(f func(DownloadStatus)) {
 // QueueDownload downloads the audio file from the given url and saves it to the given path. As Netflix has no metadata for
 // its media files, we need to probe the file format to determine if it's an audio file or a video file. This is done by
 // reading the first 3000 bytes of the file and checking if it's an audio file. If it's a video file, we skip it.
-func (q *DownloadQueue) QueueDownload(t *DownloadTask) error {
-	go func(t *DownloadTask) {
+func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
+	go func(t DownloadTask) {
 		var taskId = newTaskId()
-		q.statusMsgs <- DownloadStatusQueued{
-			taskId: taskId,
-			task:   t,
+		q.statusMsgs <- Queuing{
+			&taskInfo{taskId, t},
 		}
 		err := q.QueueTask(func(ctx context.Context) error {
 			start := time.Now()
@@ -70,9 +74,8 @@ func (q *DownloadQueue) QueueDownload(t *DownloadTask) error {
 				return nil
 			}
 
-			q.statusMsgs <- DownloadStatusStarted{
-				taskId: taskId,
-				task:   t,
+			q.statusMsgs <- Begin{
+				&taskInfo{taskId, t},
 			}
 
 			out, err := os.Create(toPath)
@@ -93,11 +96,10 @@ func (q *DownloadQueue) QueueDownload(t *DownloadTask) error {
 				return err
 			}
 
-			q.statusMsgs <- DownloadStatusFinished{
-				taskId:        taskId,
-				task:          t,
-				BytesReceived: n,
-				Duration:      time.Since(start),
+			q.statusMsgs <- Finished{
+				taskInfo:      &taskInfo{taskId, t},
+				bytesReceived: n,
+				duration:      time.Since(start),
 			}
 
 			return nil
@@ -111,50 +113,40 @@ func (q *DownloadQueue) QueueDownload(t *DownloadTask) error {
 	return nil
 }
 
-type DownloadStatus interface {
-	TaskId() string
-	Task() *DownloadTask
-}
-
-type DownloadStatusQueued struct {
+type taskInfo struct {
 	taskId string
-	task   *DownloadTask
+	task   DownloadTask
 }
 
-func (s DownloadStatusQueued) TaskId() string {
-	return s.taskId
+func (d *taskInfo) TaskId() string {
+	return d.taskId
 }
 
-func (s DownloadStatusQueued) Task() *DownloadTask {
-	return s.task
+func (d *taskInfo) Task() DownloadTask {
+	return d.task
 }
 
-type DownloadStatusStarted struct {
-	taskId string
-	task   *DownloadTask
+type Queuing struct {
+	*taskInfo
 }
 
-func (s DownloadStatusStarted) TaskId() string {
-	return s.taskId
+type Begin struct {
+	*taskInfo
 }
 
-func (s DownloadStatusStarted) Task() *DownloadTask {
-	return s.task
+type Finished struct {
+	bytesReceived int64
+	duration      time.Duration
+
+	*taskInfo
 }
 
-type DownloadStatusFinished struct {
-	taskId        string
-	BytesReceived int64
-	Duration      time.Duration
-	task          *DownloadTask
+func (f *Finished) BytesReceived() int64 {
+	return f.bytesReceived
 }
 
-func (s DownloadStatusFinished) TaskId() string {
-	return s.taskId
-}
-
-func (s DownloadStatusFinished) Task() *DownloadTask {
-	return s.task
+func (f *Finished) Duration() time.Duration {
+	return f.duration
 }
 
 func newTaskId() string {
