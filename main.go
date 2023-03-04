@@ -18,6 +18,12 @@ type Args struct {
 	ChromeURL   *url.URL `arg:"-c, --chrome-url" default:"http://127.0.0.1:9222" help:"url of the chrome debugger."`
 }
 
+var Version string
+
+func (Args) Version() string {
+	return Version
+}
+
 func main() {
 	args := &Args{}
 	mustParse(args)
