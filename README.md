@@ -46,13 +46,14 @@ and downloads the audio tracks in mp4 format. This is possible because the audio
 
 ## Build from source
 
-Narr is written in Go. You can build it the following commands:
+Narr is written in Go. You can build it from source with the following commands:
 
 ```bash
 git clone https://github.com/IljaN/narr.git
-cd narr
-go build
+make build_all
 ```
+
+This builds binaries for Linux, Windows and MacOS (amd64 + arm64) and places them in the `bin` directory.
 
 ## Flags
 
