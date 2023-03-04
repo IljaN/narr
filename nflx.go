@@ -10,20 +10,23 @@ import (
 	"strings"
 )
 
+type NFlX struct {
+	chrome *cdp.Client
+}
+
 func NewNFLX(chrome *cdp.Client) *NFlX {
 	return &NFlX{
 		chrome: chrome,
 	}
 }
 
-type NFlX struct {
-	chrome *cdp.Client
-}
-
 type event struct {
-	evType  string
+	evType  int
 	payload []byte
 }
+
+const MediaUrlReceivedEvent = 0
+const NavigatedEvent = 1
 
 func (n *NFlX) Listen(ctx context.Context) chan event {
 	c := n.chrome // Listen to response received events
@@ -58,10 +61,7 @@ func (n *NFlX) Listen(ctx context.Context) chan event {
 						log.Fatal(err)
 					}
 
-					events <- event{
-						evType:  "navigated",
-						payload: []byte(ev.URL),
-					}
+					events <- event{NavigatedEvent, []byte(ev.URL)}
 
 				case <-responseReceived.Ready():
 					ev, err := responseReceived.Recv()
@@ -70,10 +70,7 @@ func (n *NFlX) Listen(ctx context.Context) chan event {
 					}
 
 					if isMediaURL(ev.Response.URL) {
-						events <- event{
-							evType:  "mediaUrlReceived",
-							payload: []byte(ev.Response.URL),
-						}
+						events <- event{MediaUrlReceivedEvent, []byte(ev.Response.URL)}
 					}
 				}
 			}

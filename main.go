@@ -57,7 +57,7 @@ func main() {
 	var browserURL = args.VideoURL.String()
 	for events := range nflx.Listen(ctx) {
 		switch events.evType {
-		case "mediaUrlReceived":
+		case MediaUrlReceivedEvent:
 			err := q.QueueDownload(&DownloadTask{
 				SrcURL:   toDownloadableURL(string(events.payload)),
 				ToPath:   toDownloadPath(browserURL, args.DownloadDir),
@@ -66,7 +66,7 @@ func main() {
 			if err != nil {
 				log.Println(err)
 			}
-		case "navigated":
+		case NavigatedEvent:
 			log.Printf("ᐅ Navigate to %s \n", events.payload)
 			browserURL = string(events.payload)
 		}
