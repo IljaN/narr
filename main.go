@@ -7,9 +7,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
-	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -34,6 +32,17 @@ func main() {
 	// Create task queue for downloading
 	q := NewDownloadQueue()
 	defer q.Release()
+
+	// Listen for download status updates
+	q.OnStatusReceived(func(status DownloadStatus) {
+		switch s := status.(type) {
+		case DownloadStatusStarted:
+			log.Printf("▼ Downloading %s to %s", s.VideoUrl, s.ToPath)
+		case DownloadStatusFinished:
+			log.Printf("✓ Finished    %s  ⟾  %s (got %d bytes in %f)", s.VideoUrl, s.ToPath, s.BytesReceived, s.Duration.Seconds())
+		}
+	})
+
 	nflx := NewNFLX(chrome)
 
 	// Navigate to the initial url
@@ -60,51 +69,6 @@ func main() {
 			browserURL = string(events.payload)
 		}
 	}
-}
-
-// download downloads the audio file from the given url and saves it to the given path. As Netflix has no metadata for
-// its media files, we need to probe the file format to determine if it's an audio file or a video file. This is done by
-// reading the first 3000 bytes of the file and checking if it's an audio file. If it's a video file, we skip it.
-func download(fromUrl, toPath, videoUrl string) error {
-	resp, err := http.Get(fromUrl)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Probe file format
-	header := make([]byte, 3000)
-	isAudio, err := probeFileFormat(resp.Body, header)
-	if err != nil {
-		return fmt.Errorf("error probing file format: %w", err)
-	}
-
-	if !isAudio {
-		return nil
-	}
-	log.Printf("▼ Downloading %s  ⟾  %s", videoUrl, toPath)
-
-	out, err := os.Create(toPath)
-
-	if err != nil {
-		return err
-	}
-
-	defer out.Close()
-
-	_, err = out.Write(header)
-	if err != nil {
-		return err
-	}
-
-	n, err := io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("✓ Finished    %s  ⟾  %s, got %d bytes", videoUrl, toPath, n)
-
-	return nil
 }
 
 // probeFileFormat reads the first 30k bytes of the file and checks if it is an audio file.
