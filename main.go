@@ -36,10 +36,12 @@ func main() {
 	// Listen for download status updates
 	q.OnStatusReceived(func(status DownloadStatus) {
 		switch s := status.(type) {
+		case DownloadStatusQueued:
+			log.Printf("⏳ [%s] Queued  %s", s.TaskId(), s.Task().VideoUrl)
 		case DownloadStatusStarted:
-			log.Printf("▼ Downloading %s to %s", s.VideoUrl, s.ToPath)
+			log.Printf("▼ [%s] Downloading %s to %s", s.TaskId(), s.Task().VideoUrl, s.Task().ToPath)
 		case DownloadStatusFinished:
-			log.Printf("✓ Finished    %s  ⟾  %s (got %d bytes in %f)", s.VideoUrl, s.ToPath, s.BytesReceived, s.Duration.Seconds())
+			log.Printf("✓ [%s] Finished %s  ⟾  %s (got %d bytes in %f)", s.TaskId(), s.Task().VideoUrl, s.Task().ToPath, s.BytesReceived, s.Duration.Seconds())
 		}
 	})
 
@@ -56,7 +58,7 @@ func main() {
 	for events := range nflx.Listen(ctx) {
 		switch events.evType {
 		case "mediaUrlReceived":
-			err := q.QueueDownload(DownloadTask{
+			err := q.QueueDownload(&DownloadTask{
 				SrcURL:   toDownloadableURL(string(events.payload)),
 				ToPath:   toDownloadPath(browserURL, args.DownloadDir),
 				VideoUrl: browserURL,
@@ -65,7 +67,7 @@ func main() {
 				log.Println(err)
 			}
 		case "navigated":
-			log.Printf("🗺Navigate to %s \n", events.payload)
+			log.Printf("ᐅ Navigate to %s \n", events.payload)
 			browserURL = string(events.payload)
 		}
 	}

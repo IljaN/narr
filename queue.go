@@ -16,19 +16,16 @@ import (
 func NewDownloadQueue() *DownloadQueue {
 	return &DownloadQueue{
 		Queue:      queue.NewPool(8),
-		tasks:      make(map[string]DownloadTask),
 		statusMsgs: make(chan DownloadStatus, 50),
 	}
 }
 
 type DownloadQueue struct {
-	tasks      map[string]DownloadTask
 	statusMsgs chan DownloadStatus
 	*queue.Queue
 }
 
 type DownloadTask struct {
-	taskId   string
 	SrcURL   string
 	ToPath   string
 	VideoUrl string
@@ -45,15 +42,16 @@ func (q *DownloadQueue) OnStatusReceived(f func(DownloadStatus)) {
 // QueueDownload downloads the audio file from the given url and saves it to the given path. As Netflix has no metadata for
 // its media files, we need to probe the file format to determine if it's an audio file or a video file. This is done by
 // reading the first 3000 bytes of the file and checking if it's an audio file. If it's a video file, we skip it.
-func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
-	t.taskId = newTaskId()
-	q.tasks[t.taskId] = t
-	go func(t DownloadTask) {
+func (q *DownloadQueue) QueueDownload(t *DownloadTask) error {
+	go func(t *DownloadTask) {
+		var taskId = newTaskId()
+		q.statusMsgs <- DownloadStatusQueued{
+			taskId: taskId,
+			task:   t,
+		}
 		err := q.QueueTask(func(ctx context.Context) error {
 			start := time.Now()
-			var taskId = t.taskId
 			var fromUrl = t.SrcURL
-			var videoUrl = t.VideoUrl
 			var toPath = t.ToPath
 			resp, err := http.Get(fromUrl)
 			if err != nil {
@@ -73,9 +71,8 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 			}
 
 			q.statusMsgs <- DownloadStatusStarted{
-				taskId:   taskId,
-				VideoUrl: videoUrl,
-				ToPath:   toPath,
+				taskId: taskId,
+				task:   t,
 			}
 
 			out, err := os.Create(toPath)
@@ -98,8 +95,7 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 
 			q.statusMsgs <- DownloadStatusFinished{
 				taskId:        taskId,
-				VideoUrl:      videoUrl,
-				ToPath:        toPath,
+				task:          t,
 				BytesReceived: n,
 				Duration:      time.Since(start),
 			}
@@ -117,32 +113,52 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 
 type DownloadStatus interface {
 	TaskId() string
+	Task() *DownloadTask
+}
+
+type DownloadStatusQueued struct {
+	taskId string
+	task   *DownloadTask
+}
+
+func (s DownloadStatusQueued) TaskId() string {
+	return s.taskId
+}
+
+func (s DownloadStatusQueued) Task() *DownloadTask {
+	return s.task
 }
 
 type DownloadStatusStarted struct {
-	taskId   string
-	VideoUrl string
-	ToPath   string
+	taskId string
+	task   *DownloadTask
 }
 
 func (s DownloadStatusStarted) TaskId() string {
 	return s.taskId
 }
 
+func (s DownloadStatusStarted) Task() *DownloadTask {
+	return s.task
+}
+
 type DownloadStatusFinished struct {
 	taskId        string
-	VideoUrl      string
-	ToPath        string
 	BytesReceived int64
 	Duration      time.Duration
+	task          *DownloadTask
 }
 
 func (s DownloadStatusFinished) TaskId() string {
 	return s.taskId
 }
 
+func (s DownloadStatusFinished) Task() *DownloadTask {
+	return s.task
+}
+
 func newTaskId() string {
-	bytes := make([]byte, 8)
+	bytes := make([]byte, 6)
 	if _, err := rand.Read(bytes); err != nil {
 		log.Fatal(err)
 	}
