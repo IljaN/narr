@@ -35,13 +35,14 @@ func main() {
 
 	// Listen for download status updates
 	q.OnStatusReceived(func(status DownloadStatus) {
+		task := status.Task()
 		switch s := status.(type) {
 		case Queuing:
-			log.Printf("⏳ [%s] Queuing  %s", s.TaskId(), s.Task().VideoUrl)
+			break
 		case Begin:
-			log.Printf("▼ [%s] Downloading %s to %s", s.TaskId(), s.Task().VideoUrl, s.Task().ToPath)
+			log.Printf("▼ [%s] Downloading %s to %s", s.TaskId(), task.VideoUrl, task.ToPath)
 		case Finished:
-			log.Printf("✓ [%s] Finished %s  ⟾  %s (got %d bytes in %f)", s.TaskId(), s.Task().VideoUrl, s.Task().ToPath, s.BytesReceived(), s.Duration().Seconds())
+			log.Printf("✓ [%s] Finished %s  ⟾  %s (got %d bytes in %f)", s.TaskId(), task.VideoUrl, task.ToPath, s.BytesReceived(), s.Duration().Seconds())
 		}
 	})
 
