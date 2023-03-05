@@ -3,10 +3,11 @@ Netflix Audio Ripper - Download audio tracks from Netflix to sample your favouri
 
 ## Usage
 
-Start Chrome or Brave with remote debugging enabled:
-
+Close all browser instances and start Chrome,Brave or Edge from the terminal with enabled remote debugging :
 ```bash
-google-chrome --remote-debugging-port=9222
+ google-chrome --remote-debugging-port=9222
+ brave-browser --remote-debugging-port=9222
+./msedge.exe  --remote-debugging-port=9222
 ```
 
 - Make sure that you are logged in on Netflix in the started browser.
@@ -36,7 +37,7 @@ download the audio track of the currently playing episode.
 2023/02/18 16:59:53 ✓ Finished    https://www.netflix.com/watch/81238005?trackId=14170056  ⟾  /home/looper/81238005-14170056-605394647632969758, got 65346400 bytes
 ```
 
-It is also possible to navigate to the netflix home page. Narr will then download audio tracks of trailers or previews.
+It is also possible to navigate to the Netflix home page. Narr will then download audio tracks of trailers or previews.
 
 ## How it works
 
