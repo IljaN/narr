@@ -5,7 +5,7 @@ SOURCES := $(shell find $(SOURCEDIR) -name '*.go' ! -name '*_test.go')
 build:
 	CGO_ENABLED=0 go build ${LDFLAGS} .
 
-build_all: bin/narr-amd64-linux bin/narr-amd64-darwin bin/narr-amd64-windows.exe bin/narrl-arm64-darwin
+build_all: bin/narr-amd64-linux bin/narr-amd64-darwin bin/narr-amd64-windows.exe bin/narr-arm64-darwin
 
 bin/narr-amd64-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-linux $(SOURCES)
@@ -16,7 +16,7 @@ bin/narr-amd64-darwin:
 bin/narr-amd64-windows.exe:
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-windows.exe $(SOURCES)
 
-bin/narrl-arm64-darwin:
+bin/narr-arm64-darwin:
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/narr-arm64-darwin $(SOURCES)
 
 .PHONY: test
