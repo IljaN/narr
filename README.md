@@ -3,7 +3,7 @@ Netflix Audio Ripper - Download audio tracks from Netflix to sample your favouri
 
 ## Usage
 
-Close all browser instances and start Chrome,Brave or Edge from the terminal with enabled remote debugging :
+Close all browser instances and start Chrome, Brave or Edge from the terminal with enabled remote debugging :
 ```bash
  google-chrome --remote-debugging-port=9222
  brave-browser --remote-debugging-port=9222
@@ -71,4 +71,4 @@ Options:
   --chrome-url CHROME-URL, -c CHROME-URL
                          url of the chrome debugger. [default: http://127.0.0.1:9222]
   --help, -h             display this help and exit
-``
+```
