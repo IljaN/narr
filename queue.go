@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// DownloadQueue allows to queue download tasks. Up to 8 tasks are executed in parallel
 type DownloadQueue struct {
 	statusMsgs chan DownloadStatus
 	*queue.Queue
@@ -25,17 +26,20 @@ func NewDownloadQueue() *DownloadQueue {
 	}
 }
 
+// DownloadTask must be passed to QueueDownload to enqueue a job
 type DownloadTask struct {
 	SrcURL   string
 	ToPath   string
 	VideoUrl string
 }
 
+// DownloadStatus is implemented by specific status-types (Queuing, Begin, Finished)
 type DownloadStatus interface {
 	TaskId() string
 	Task() DownloadTask
 }
 
+// OnStatusReceived notifies a callback function on any status changes of the queued download jobs
 func (q *DownloadQueue) OnStatusReceived(f func(DownloadStatus)) {
 	go func() {
 		for msg := range q.statusMsgs {
@@ -126,14 +130,17 @@ func (d *taskInfo) Task() DownloadTask {
 	return d.task
 }
 
+// Queuing is emitted while the download is in the queue
 type Queuing struct {
 	*taskInfo
 }
 
+// Begin is emitted after the file format was probed and the download has begun
 type Begin struct {
 	*taskInfo
 }
 
+// Finished is emitted when the download has completed
 type Finished struct {
 	bytesReceived int64
 	duration      time.Duration
