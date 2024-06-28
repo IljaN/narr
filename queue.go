@@ -67,7 +67,7 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 			header := make([]byte, 3000)
 			isAudio, err := probeFileFormat(resp.Body, header)
 			if err != nil {
-				return fmt.Errorf("error probing file format: %w", err)
+				return fmt.Errorf("error probing file format of %s: %w", fromUrl, err)
 			}
 
 			if !isAudio {
