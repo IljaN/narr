@@ -61,11 +61,16 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 			start := time.Now()
 			var fromUrl = t.SrcURL
 			var toPath = t.ToPath
+			log.Printf("DEBUG_DL_URL: %s\n", fromUrl)
 			resp, err := http.Get(fromUrl)
 			if err != nil {
 				return err
 			}
 			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("bad status  %s for %s", resp.StatusCode, fromUrl)
+			}
 
 			// Probe file format
 			header := make([]byte, 3000)
