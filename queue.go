@@ -71,9 +71,13 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 				return fmt.Errorf("bad status  %d for %s", resp.StatusCode, fromUrl)
 			}
 
-			// Probe file format
 			header := make([]byte, 3000)
-			isAudio, err := probeFileFormat(resp.Body, header)
+
+			if _, err = io.ReadAtLeast(resp.Body, header, 3000); err != nil {
+				return fmt.Errorf("can't read header: %s", err)
+			}
+
+			isAudio, err := probeFileFormat(header)
 			if err != nil {
 				return fmt.Errorf("error probing file format of %s: %w", fromUrl, err)
 			}
