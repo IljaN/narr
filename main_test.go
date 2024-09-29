@@ -19,6 +19,12 @@ func TestToDownloadPath(t *testing.T) {
 	assert.True(t, strings.HasPrefix(downloadPath, "/tmp/foo/DL-"))
 }
 
+func TestToDownloadableURL(t *testing.T) {
+	mediaURL := "https://ipv6-cndoca-avcd.nflxvideo.net/range/0-52342?t=12345"
+	downloadableURL := toDownloadableURL(mediaURL)
+	assert.Equal(t, "https://ipv6-cndoca-avcd.nflxvideo.net?t=12345", downloadableURL)
+}
+
 func TestProbeFileFormat(t *testing.T) {
 	testCases := []struct {
 		filePath string
