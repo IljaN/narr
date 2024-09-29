@@ -3,8 +3,8 @@ module github.com/IljaN/narr
 go 1.22
 
 require (
+	github.com/abema/go-mp4 v1.2.0
 	github.com/alexflint/go-arg v1.5.1
-	github.com/alfg/mp4 v0.0.0-20210728035756-55ea58c08aeb
 	github.com/golang-queue/queue v0.2.0
 	github.com/mafredri/cdp v0.34.1
 	github.com/stretchr/testify v1.8.4
@@ -14,6 +14,7 @@ require (
 require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/google/uuid v1.1.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

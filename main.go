@@ -1,10 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"fmt"
-	"github.com/alfg/mp4"
-	"io"
+	"github.com/abema/go-mp4"
 	"log"
 	"math/rand"
 	"net/url"
@@ -80,19 +79,25 @@ func main() {
 	}
 }
 
-// probeFileFormat reads the first 30k bytes of the file and checks if it is an audio file.
-func probeFileFormat(body io.Reader, header []byte) (isAudio bool, err error) {
-	_, err = body.Read(header)
-	if err != nil {
-		return false, fmt.Errorf("error reading header: %w", err)
-	}
-
-	rd, err := mp4.OpenFromBytes(header)
+// probeFileFormat reads the header of file and checks if it is an audio file.
+func probeFileFormat(header []byte) (isAudio bool, err error) {
+	info, err := mp4.Probe(bytes.NewReader(header))
 	if err != nil {
 		return false, err
 	}
 
-	return rd.Ftyp.MajorBrand == "mp42", nil
+	majorBrand := string(info.MajorBrand[:])
+
+	if majorBrand == "mp42" {
+		return true, nil
+	}
+
+	// On MacOS
+	if majorBrand == "iso6" && len(info.Tracks) == 1 && info.Tracks[0].Codec == mp4.CodecMP4A {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // toDownloadableURL removes the path from the payload to make the resource downloadable. In our case the path
