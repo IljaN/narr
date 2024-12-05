@@ -1,11 +1,12 @@
 name: Publish release
 on:
-  push:
-    tags:
-      - "*.*.*"
+  workflow_run:
+    workflows: ["Test"]
+    types:
+      - completed
 jobs:
   publish-release:
-   if: startsWith(github.ref, 'refs/tags/')
+   if: ${{ github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_commit.message, 'refs/tags/') }}
    name: "Publish release"
    runs-on: ubuntu-latest
    permissions:
