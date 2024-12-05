@@ -16,7 +16,7 @@ jobs:
          go-version: 1.23.x
      - name: Checkout
        uses: actions/checkout@v4.2.2
-       with:
+       #with:
          #token: ${{ secrets.GH_PAT }}
      - name: Build Release
        run: make -j4 build_all
