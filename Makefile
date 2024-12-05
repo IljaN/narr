@@ -1,6 +1,6 @@
 VERSION := $(shell git describe --tags --dirty --always)
 LDFLAGS = -ldflags "-X main.Version=${VERSION}"
-SOURCES := $(shell find $(SOURCEDIR) -name '*.go' ! -name '*_test.go')
+SOURCES := $(shell find $(SOURCEDIR) -name '*.go' ! -name '*_test.go' ! -path '$(SOURCEDIR)/vendor/*')
 
 build:
 	CGO_ENABLED=0 go build ${LDFLAGS} .
@@ -8,16 +8,16 @@ build:
 build_all: bin/narr-amd64-linux bin/narr-amd64-darwin bin/narr-amd64-windows.exe bin/narr-arm64-darwin
 
 bin/narr-amd64-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-linux $(SOURCES)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-linux
 
 bin/narr-amd64-darwin:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-darwin $(SOURCES)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-darwin
 
 bin/narr-amd64-windows.exe:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-windows.exe $(SOURCES)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o bin/narr-amd64-windows.exe
 
 bin/narr-arm64-darwin:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/narr-arm64-darwin $(SOURCES)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o bin/narr-arm64-darwin
 
 .PHONY: test
 test:
