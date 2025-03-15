@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -22,73 +21,88 @@ func FileServerHandler(directory string) http.Handler {
 func TestDownloadQueue_QueueDownload_Formats(t *testing.T) {
 	// Create a test server with the file server handler
 	ts := httptest.NewServer(FileServerHandler("./test/testdata"))
-	q := NewDownloadQueue()
+	tearDownFunc := func(q *DownloadQueue) {
+		q.Release()
+	}
+
+	defer ts.Close()
 
 	t.Run("ISO6Download", func(t *testing.T) {
-		toPath := t.TempDir() + "/audio_iso6.mp4"
+		q := NewDownloadQueue()
+		defer tearDownFunc(q)
+		downloadDir := t.TempDir()
+
+		q.OnStatusReceived(func(status DownloadStatus) {
+			_ = status.Task()
+			switch s := status.(type) {
+			case Queuing:
+				break
+			case Begin:
+				break
+			case Finished:
+				fp := s.Task().FullFilePath
+				assert.FileExists(t, fp)
+				assertIdenticalFiles(t, "./test/testdata/audio_iso6.mp4", fp)
+			}
+		})
+
 		task := DownloadTask{
-			SrcURL:   ts.URL + "/files/audio_iso6.mp4",
-			ToPath:   toPath,
-			VideoUrl: "http://example.com/video.mp4",
+			SrcURL:      ts.URL + "/files/audio_iso6.mp4",
+			DownloadDir: downloadDir,
+			VideoUrl:    "http://example.com/video.mp4",
 		}
+
 		err := q.QueueDownload(task)
 		assert.NoError(t, err)
-
-		// Check every 50 ms for maximum of 5 seconds if the download has been queued, begun and finished, if not fail the test
-		for i := 0; i < 100; i++ {
-			time.Sleep(50 * time.Millisecond)
-			if _, err := os.Stat(toPath); errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			break
-
-		}
-
-		assert.FileExists(t, toPath)
-		assertIdenticalFiles(t, "./test/testdata/audio_iso6.mp4", toPath)
 	})
 
 	t.Run("MP42Download", func(t *testing.T) {
-		toPath := t.TempDir() + "/audio_mp42.mp4"
+		q := NewDownloadQueue()
+		defer tearDownFunc(q)
+
+		downloadDir := t.TempDir()
+
+		q.OnStatusReceived(func(status DownloadStatus) {
+			_ = status.Task()
+			switch s := status.(type) {
+			case Queuing:
+				break
+			case Begin:
+				break
+			case Finished:
+				fp := s.Task().FullFilePath
+				assert.FileExists(t, fp)
+				assertIdenticalFiles(t, "./test/testdata/audio_mp42.mp4", fp)
+			}
+		})
+
 		task := DownloadTask{
-			SrcURL:   ts.URL + "/files/audio_mp42.mp4",
-			ToPath:   toPath,
-			VideoUrl: "http://example.com/video.mp4",
+			SrcURL:      ts.URL + "/files/audio_mp42.mp4",
+			DownloadDir: downloadDir,
+			VideoUrl:    "http://example.com/video.mp4",
 		}
+
 		err := q.QueueDownload(task)
 		assert.NoError(t, err)
-
-		for i := 0; i < 100; i++ {
-			time.Sleep(50 * time.Millisecond)
-			if _, err := os.Stat(toPath); errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			break
-		}
-
-		assert.FileExists(t, toPath)
-		assertIdenticalFiles(t, "./test/testdata/audio_mp42.mp4", toPath)
 	})
 
 	t.Run("InvalidFile", func(t *testing.T) {
-		toPath := t.TempDir() + "/vid.mp4"
+		q := NewDownloadQueue()
+		defer tearDownFunc(q)
+		downloadDir := t.TempDir()
+
 		task := DownloadTask{
-			SrcURL:   ts.URL + "/files/vid.mp4",
-			ToPath:   toPath,
-			VideoUrl: "http://example.com/video.mp4",
+			SrcURL:      ts.URL + "/files/vid.mp4",
+			DownloadDir: downloadDir,
+			VideoUrl:    "http://example.com/video.mp4",
 		}
 		err := q.QueueDownload(task)
 		assert.NoError(t, err)
 
 		for i := 0; i < 5; i++ {
 			time.Sleep(1 * time.Second)
-			assert.NoFileExists(t, toPath)
+			assertDirIsEmpty(t, downloadDir)
 		}
-	})
-
-	t.Cleanup(func() {
-		q.Release()
-		ts.Close()
 	})
 }
 
@@ -116,9 +130,9 @@ func TestDownloadQueue_Statuses(t *testing.T) {
 	})
 
 	task := DownloadTask{
-		SrcURL:   testServer.URL + "/files/audio_iso6.mp4",
-		ToPath:   t.TempDir() + "/audio_iso6.mp4",
-		VideoUrl: "http://example.com/video.mp4",
+		SrcURL:      testServer.URL + "/files/audio_iso6.mp4",
+		DownloadDir: t.TempDir(),
+		VideoUrl:    "http://example.com/video.mp4",
 	}
 
 	err := q.QueueDownload(task)
@@ -197,4 +211,23 @@ func calculateMD5(file *os.File) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+// IsDirEmpty checks if a given directory is empty
+func assertDirIsEmpty(t *testing.T, dir string) bool {
+	// Open the directory
+	f, err := os.Open(dir)
+	if err != nil {
+		assert.Fail(t, fmt.Sprintf("Directory %s can not be opened: %s", dir, err))
+	}
+	defer f.Close()
+
+	// Read the directory contents
+	entries, err := f.Readdir(1) // Read at most 1 entry
+	if err != nil && err != io.EOF {
+		assert.Fail(t, fmt.Sprintf("Directory %s is not empty: %v", dir, entries))
+	}
+
+	// If entries is empty, directory is empty
+	return len(entries) == 0
 }

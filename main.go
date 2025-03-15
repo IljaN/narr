@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"github.com/abema/go-mp4"
 	"log"
 	"math/rand"
 	"net/url"
@@ -45,9 +43,9 @@ func main() {
 		case Queuing:
 			break
 		case Begin:
-			log.Printf("▼ [%s] Downloading %s to %s", s.TaskId(), task.VideoUrl, task.ToPath)
+			log.Printf("▼ [%s] Downloading %s to %s", s.TaskId(), task.VideoUrl, task.FullFilePath)
 		case Finished:
-			log.Printf("✓ [%s] Finished %s  ⟾  %s (got %d bytes in %f)", s.TaskId(), task.VideoUrl, task.ToPath, s.BytesReceived(), s.Duration().Seconds())
+			log.Printf("✓ [%s] Finished %s  ⟾  %s (got %d bytes in %f)", s.TaskId(), task.VideoUrl, task.FullFilePath, s.BytesReceived(), s.Duration().Seconds())
 		}
 	})
 
@@ -65,10 +63,11 @@ func main() {
 		switch events.evType {
 		case MediaUrlReceivedEvent:
 			err := q.QueueDownload(DownloadTask{
-				SrcURL:   toDownloadableURL(string(events.payload)),
-				ToPath:   toDownloadPath(browserURL, args.DownloadDir),
-				VideoUrl: browserURL,
+				SrcURL:      toDownloadableURL(string(events.payload)),
+				VideoUrl:    browserURL,
+				DownloadDir: args.DownloadDir,
 			})
+
 			if err != nil {
 				log.Println(err)
 			}
@@ -77,27 +76,6 @@ func main() {
 			browserURL = string(events.payload)
 		}
 	}
-}
-
-// probeFileFormat reads the header of file and checks if it is an audio file.
-func probeFileFormat(header []byte) (isAudio bool, err error) {
-	info, err := mp4.Probe(bytes.NewReader(header))
-	if err != nil {
-		return false, err
-	}
-
-	majorBrand := string(info.MajorBrand[:])
-
-	if majorBrand == "mp42" {
-		return true, nil
-	}
-
-	// On MacOS
-	if majorBrand == "iso6" && len(info.Tracks) == 1 && info.Tracks[0].Codec == mp4.CodecMP4A {
-		return true, nil
-	}
-
-	return false, nil
 }
 
 // toDownloadableURL removes the path from the payload to make the resource downloadable. In our case the path
@@ -115,16 +93,22 @@ func toDownloadableURL(audioURL string) string {
 
 // toDownloadPath returns the path where to download the audio file. The path is composed of the video id, the track
 // id and a random number.
-func toDownloadPath(videoURL string, downloadDir string) string {
+func toDownloadPath(videoURL string, downloadDir string, fi probeInfo) string {
 	u, err := url.Parse(videoURL)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	var audCodec = ".aac"
+	if fi.isXHEAAC {
+		audCodec = ".xhe-aac"
+	}
+
 	if strings.HasPrefix(u.Path, "/watch") && u.Query().Has("trackId") {
 		videoId := strings.TrimLeft(u.Path, "/watch/")
 		trackId := u.Query().Get("trackId")
-		return downloadDir + "/" + videoId + "-" + trackId + "-" + strconv.Itoa(rand.Int()) + ".mp4a"
+		return downloadDir + "/" + videoId + "-" + trackId + "-" + strconv.Itoa(rand.Int()) + audCodec + ".mp4a"
 	}
 
-	return downloadDir + "/" + "DL-" + strconv.Itoa(rand.Int()) + ".mp4a"
+	return downloadDir + "/" + "DL-" + strconv.Itoa(rand.Int()) + audCodec + ".mp4a"
 }
