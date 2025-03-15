@@ -1,14 +1,14 @@
 module github.com/IljaN/narr
 
-go 1.23
+go 1.24
 
 require (
-	github.com/abema/go-mp4 v1.2.0
+	github.com/abema/go-mp4 v1.4.1
 	github.com/alexflint/go-arg v1.5.1
-	github.com/golang-queue/queue v0.2.0
+	github.com/golang-queue/queue v0.3.0
 	github.com/mafredri/cdp v0.35.0
-	github.com/stretchr/testify v1.8.4
-	golang.org/x/sync v0.10.0
+	github.com/stretchr/testify v1.10.0
+	golang.org/x/sync v0.12.0
 )
 
 require (
