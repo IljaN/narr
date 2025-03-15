@@ -123,8 +123,8 @@ func toDownloadPath(videoURL string, downloadDir string) string {
 	if strings.HasPrefix(u.Path, "/watch") && u.Query().Has("trackId") {
 		videoId := strings.TrimLeft(u.Path, "/watch/")
 		trackId := u.Query().Get("trackId")
-		return downloadDir + "/" + videoId + "-" + trackId + "-" + strconv.Itoa(rand.Int())
+		return downloadDir + "/" + videoId + "-" + trackId + "-" + strconv.Itoa(rand.Int()) + ".mp4a"
 	}
 
-	return downloadDir + "/" + "DL-" + strconv.Itoa(rand.Int())
+	return downloadDir + "/" + "DL-" + strconv.Itoa(rand.Int()) + ".mp4a"
 }
