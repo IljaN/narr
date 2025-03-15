@@ -22,13 +22,14 @@ type (
 		sync.Mutex
 		metric       *metric
 		logger       Logger
-		workerCount  int
+		workerCount  int64
 		routineGroup *routineGroup
 		quit         chan struct{}
 		ready        chan struct{}
 		worker       core.Worker
 		stopOnce     sync.Once
 		stopFlag     int32
+		afterFn      func()
 	}
 )
 
@@ -46,6 +47,7 @@ func NewQueue(opts ...Option) (*Queue, error) {
 		logger:       o.logger,
 		worker:       o.worker,
 		metric:       &metric{},
+		afterFn:      o.afterFn,
 	}
 
 	if q.worker == nil {
@@ -57,7 +59,10 @@ func NewQueue(opts ...Option) (*Queue, error) {
 
 // Start to enable all worker
 func (q *Queue) Start() {
-	if q.workerCount == 0 {
+	q.Lock()
+	count := q.workerCount
+	q.Unlock()
+	if count == 0 {
 		return
 	}
 	q.routineGroup.Run(func() {
@@ -90,23 +95,28 @@ func (q *Queue) Release() {
 }
 
 // BusyWorkers returns the numbers of workers in the running process.
-func (q *Queue) BusyWorkers() int {
-	return int(q.metric.BusyWorkers())
+func (q *Queue) BusyWorkers() int64 {
+	return q.metric.BusyWorkers()
 }
 
 // BusyWorkers returns the numbers of success tasks.
-func (q *Queue) SuccessTasks() int {
-	return int(q.metric.SuccessTasks())
+func (q *Queue) SuccessTasks() uint64 {
+	return q.metric.SuccessTasks()
 }
 
 // BusyWorkers returns the numbers of failure tasks.
-func (q *Queue) FailureTasks() int {
-	return int(q.metric.FailureTasks())
+func (q *Queue) FailureTasks() uint64 {
+	return q.metric.FailureTasks()
 }
 
 // BusyWorkers returns the numbers of submitted tasks.
-func (q *Queue) SubmittedTasks() int {
-	return int(q.metric.SubmittedTasks())
+func (q *Queue) SubmittedTasks() uint64 {
+	return q.metric.SubmittedTasks()
+}
+
+// CompletedTasks returns the numbers of completed tasks.
+func (q *Queue) CompletedTasks() uint64 {
+	return q.metric.CompletedTasks()
 }
 
 // Wait all process
@@ -117,7 +127,6 @@ func (q *Queue) Wait() {
 // Queue to queue single job with binary
 func (q *Queue) Queue(message core.QueuedMessage, opts ...job.AllowOption) error {
 	data := job.NewMessage(message, opts...)
-	data.Encode()
 
 	return q.queue(&data)
 }
@@ -142,7 +151,7 @@ func (q *Queue) queue(m *job.Message) error {
 	return nil
 }
 
-func (q *Queue) work(task core.QueuedMessage) {
+func (q *Queue) work(task core.TaskMessage) {
 	var err error
 	// to handle panic cases from inside the worker
 	// in such case, we start a new goroutine
@@ -150,7 +159,7 @@ func (q *Queue) work(task core.QueuedMessage) {
 		q.metric.DecBusyWorker()
 		e := recover()
 		if e != nil {
-			q.logger.Errorf("panic error: %v", e)
+			q.logger.Fatalf("panic error: %v", e)
 		}
 		q.schedule()
 
@@ -160,6 +169,10 @@ func (q *Queue) work(task core.QueuedMessage) {
 		} else {
 			q.metric.IncFailureTask()
 		}
+		if q.afterFn != nil {
+			q.afterFn()
+		}
+		q.metric.IncCompletedTask()
 	}()
 
 	if err = q.run(task); err != nil {
@@ -167,14 +180,13 @@ func (q *Queue) work(task core.QueuedMessage) {
 	}
 }
 
-func (q *Queue) run(task core.QueuedMessage) error {
-	data := task.(*job.Message)
-	if data.Task == nil {
-		data = job.Decode(task.Bytes())
-		data.Data = data.Payload
+func (q *Queue) run(task core.TaskMessage) error {
+	switch t := task.(type) {
+	case *job.Message:
+		return q.handle(t)
+	default:
+		return errors.New("invalid task type")
 	}
-
-	return q.handle(data)
 }
 
 func (q *Queue) handle(m *job.Message) error {
@@ -261,8 +273,10 @@ func (q *Queue) handle(m *job.Message) error {
 }
 
 // UpdateWorkerCount to update worker number dynamically.
-func (q *Queue) UpdateWorkerCount(num int) {
+func (q *Queue) UpdateWorkerCount(num int64) {
+	q.Lock()
 	q.workerCount = num
+	q.Unlock()
 	q.schedule()
 }
 
@@ -282,7 +296,7 @@ func (q *Queue) schedule() {
 
 // start to start all worker
 func (q *Queue) start() {
-	tasks := make(chan core.QueuedMessage, 1)
+	tasks := make(chan core.TaskMessage, 1)
 
 	for {
 		// check worker number
