@@ -18,7 +18,7 @@ On the other hand, this library is not suitable for complex data conversions.
 
 ### Reading
 
-You can parse MP4 file as follows:
+Using [ReadBoxStructure](https://pkg.go.dev/github.com/abema/go-mp4#ReadBoxStructure) or [ReadBoxStructureFromInternal](https://pkg.go.dev/github.com/abema/go-mp4#ReadBoxStructureFromInternal), you can scan box(atom) tree by depth-first order.
 
 ```go
 // expand all boxes
@@ -49,6 +49,8 @@ _, err := mp4.ReadBoxStructure(file, func(h *mp4.ReadHandle) (interface{}, error
 	return nil, nil
 })
 ```
+
+[ExtractBox](https://pkg.go.dev/github.com/abema/go-mp4#ExtractBox), [ExtractBoxes](https://pkg.go.dev/github.com/abema/go-mp4#ExtractBoxes), [ExtractBoxWithPayload](https://pkg.go.dev/github.com/abema/go-mp4#ExtractBoxWithPayload), [ExtractBoxesWithPayload](https://pkg.go.dev/github.com/abema/go-mp4#ExtractBoxesWithPayload), and [Probe](https://pkg.go.dev/github.com/abema/go-mp4#Probe) are wrapper functions of ReadBoxStructure.
 
 ```go
 // extract specific boxes
@@ -108,6 +110,12 @@ _, err = mp4.ReadBoxStructure(r, func(h *mp4.ReadHandle) (interface{}, error) {
 	}
 })
 ```
+
+Please note that the above sample code doesn't work for some MP4 files.
+If your MP4 files include specific box types (ex. stco, mfra), you should update those when offsets of mdat box changed.
+Next sample code adds an metadata box and updates chunk offsets in stco boxes.
+
+[Sample Code: Insert Metadata and Update stco box](https://gist.github.com/sunfish-shogi/cccde016a38c66d32c07a0234368804e)
 
 ### User-defined Boxes
 

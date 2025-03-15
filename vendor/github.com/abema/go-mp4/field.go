@@ -2,6 +2,7 @@ package mp4
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"sort"
@@ -29,6 +30,7 @@ const (
 	fieldVarint                              // 8
 	fieldSizeDynamic                         // 9
 	fieldLengthDynamic                       // 10
+	fieldBoxString                           // 11 - non-null-terminated string (14496-30)
 )
 
 type field struct {
@@ -68,6 +70,9 @@ func buildFieldsStruct(t reflect.Type) []*field {
 			continue
 		}
 		f := buildField(t.Field(i).Name, tag)
+		if f.is(fieldBoxString) && i != t.NumField()-1 {
+			fmt.Fprint(os.Stderr, "go-mp4: boxstring must be the last field!!\n")
+		}
 		f.children = buildFieldsAny(ft)
 		fs = append(fs, f)
 	}
@@ -109,6 +114,10 @@ func buildField(fieldName string, tag string) *field {
 			f.strType = stringType_C_P
 			fmt.Fprint(os.Stderr, "go-mp4: string=c_p tag is deprecated!! See https://github.com/abema/go-mp4/issues/76\n")
 		}
+	}
+
+	if _, contained := tagMap["boxstring"]; contained {
+		f.set(fieldBoxString)
 	}
 
 	if _, contained := tagMap["varint"]; contained {
@@ -179,6 +188,9 @@ func buildField(fieldName string, tag string) *field {
 		if err != nil {
 			panic(err)
 		}
+		if ver > math.MaxUint8 {
+			panic("ver-tag must be <=255")
+		}
 		f.version = uint8(ver)
 	}
 
@@ -187,6 +199,9 @@ func buildField(fieldName string, tag string) *field {
 		ver, err := strconv.Atoi(val)
 		if err != nil {
 			panic(err)
+		}
+		if ver > math.MaxUint8 {
+			panic("nver-tag must be <=255")
 		}
 		f.nVersion = uint8(ver)
 	}

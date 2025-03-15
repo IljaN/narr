@@ -9,9 +9,9 @@ import (
 
 var (
 	defaultCapacity    = 0
-	defaultWorkerCount = runtime.NumCPU()
+	defaultWorkerCount = int64(runtime.NumCPU())
 	defaultNewLogger   = NewLogger()
-	defaultFn          = func(context.Context, core.QueuedMessage) error { return nil }
+	defaultFn          = func(context.Context, core.TaskMessage) error { return nil }
 	defaultMetric      = NewMetric()
 )
 
@@ -29,7 +29,7 @@ func (f OptionFunc) apply(option *Options) {
 }
 
 // WithWorkerCount set worker count
-func WithWorkerCount(num int) Option {
+func WithWorkerCount(num int64) Option {
 	return OptionFunc(func(q *Options) {
 		if num <= 0 {
 			num = defaultWorkerCount
@@ -67,19 +67,27 @@ func WithWorker(w core.Worker) Option {
 }
 
 // WithFn set custom job function
-func WithFn(fn func(context.Context, core.QueuedMessage) error) Option {
+func WithFn(fn func(context.Context, core.TaskMessage) error) Option {
 	return OptionFunc(func(q *Options) {
 		q.fn = fn
 	})
 }
 
+// WithAfterFn set callback function after job done
+func WithAfterFn(afterFn func()) Option {
+	return OptionFunc(func(q *Options) {
+		q.afterFn = afterFn
+	})
+}
+
 // Options for custom args in Queue
 type Options struct {
-	workerCount int
+	workerCount int64
 	logger      Logger
 	queueSize   int
 	worker      core.Worker
-	fn          func(context.Context, core.QueuedMessage) error
+	fn          func(context.Context, core.TaskMessage) error
+	afterFn     func()
 	metric      Metric
 }
 
