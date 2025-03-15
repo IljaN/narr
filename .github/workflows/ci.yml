@@ -15,6 +15,7 @@ jobs:
       - name: Check Code
         run: |
           go mod verify
+          go mod vendor
           go vet ./...
       - name: Tests
         run: go test -v ./...
