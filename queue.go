@@ -28,9 +28,10 @@ func NewDownloadQueue() *DownloadQueue {
 
 // DownloadTask must be passed to QueueDownload to enqueue a job
 type DownloadTask struct {
-	SrcURL   string
-	ToPath   string
-	VideoUrl string
+	SrcURL       string
+	VideoUrl     string
+	DownloadDir  string
+	FullFilePath string
 }
 
 // DownloadStatus is implemented by specific status-types (Queuing, Begin, Finished)
@@ -59,16 +60,17 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 		}
 		err := q.QueueTask(func(ctx context.Context) error {
 			start := time.Now()
-			var fromUrl = t.SrcURL
-			var toPath = t.ToPath
-			resp, err := http.Get(fromUrl)
+			var browserURL = t.VideoUrl
+			var srcURL = t.SrcURL
+			var downloadDir = t.DownloadDir
+			resp, err := http.Get(srcURL)
 			if err != nil {
 				return err
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("bad status  %d for %s", resp.StatusCode, fromUrl)
+				return fmt.Errorf("bad status  %d for %s", resp.StatusCode, browserURL)
 			}
 
 			header := make([]byte, 3000)
@@ -77,20 +79,23 @@ func (q *DownloadQueue) QueueDownload(t DownloadTask) error {
 				return fmt.Errorf("can't read header: %s", err)
 			}
 
-			isAudio, err := probeFileFormat(header)
+			isAudio, fInfo, err := probeFileFormat(header)
 			if err != nil {
-				return fmt.Errorf("error probing file format of %s: %w", fromUrl, err)
+				return fmt.Errorf("error probing file format of %s: %w", browserURL, err)
 			}
 
 			if !isAudio {
 				return nil
 			}
 
+			downloadPath := toDownloadPath(browserURL, downloadDir, fInfo)
+			t.FullFilePath = downloadPath
+
 			q.statusMsgs <- Begin{
 				&taskInfo{taskId, t},
 			}
 
-			out, err := os.Create(toPath)
+			out, err := os.Create(t.FullFilePath)
 
 			if err != nil {
 				return err
